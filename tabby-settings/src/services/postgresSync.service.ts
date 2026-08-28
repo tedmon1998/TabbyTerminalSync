@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core'
 import { ipcRenderer } from 'electron'
-import { debounceTime } from 'rxjs'
+import { debounceTime, filter } from 'rxjs'
 import { AppService, ConfigService } from 'tabby-core'
 
 export interface CommandTopic {
@@ -112,6 +112,10 @@ export class PostgresSyncService {
         return ipcRenderer.invoke('postgres-sync:get-password', this.connection)
     }
 
+    async hasPassword (): Promise<boolean> {
+        return ipcRenderer.invoke('postgres-sync:has-password', this.connection)
+    }
+
     async clearPassword (): Promise<void> {
         await ipcRenderer.invoke('postgres-sync:clear-password', this.connection)
         this.config.store.postgresSync.passwordSaved = false
@@ -205,6 +209,17 @@ export class PostgresSyncService {
                 this.config.store.postgresSync.deviceID = this.newID()
                 mustSave = true
             }
+            if (this.hasConnectionDetails()) {
+                try {
+                    const passwordSaved = await this.hasPassword()
+                    if (this.config.store.postgresSync.passwordSaved !== passwordSaved) {
+                        this.config.store.postgresSync.passwordSaved = passwordSaved
+                        mustSave = true
+                    }
+                } catch (error) {
+                    this.lastError = `Could not check the system keychain: ${this.describeError(error)}`
+                }
+            }
             mustSave = this.captureLocalChanges() || mustSave
             if (mustSave) {
                 await this.config.save()
@@ -213,7 +228,14 @@ export class PostgresSyncService {
             this.applyingRemote = false
         }
 
-        this.config.changed$.pipe(debounceTime(600)).subscribe(() => this.onConfigChanged())
+        // ConfigService emits while save() is running.  Filter internal saves
+        // before debounceTime: checking applyingRemote only after the delay
+        // turns our own metadata/remote save into a new local change and keeps
+        // one item permanently pending.
+        this.config.changed$.pipe(
+            filter(() => !this.applyingRemote),
+            debounceTime(600),
+        ).subscribe(() => this.onConfigChanged())
         this.app.activeTabChange$.subscribe(tab => {
             if (this.isTerminalTab(tab)) {
                 this.lastTerminal = tab
@@ -246,8 +268,12 @@ export class PostgresSyncService {
     }
 
     private isConfigured (): boolean {
+        return this.hasConnectionDetails() && this.config.store.postgresSync.passwordSaved
+    }
+
+    private hasConnectionDetails (): boolean {
         const c = this.connection
-        return !!(c.host && c.database && c.user && c.port && this.config.store.postgresSync.passwordSaved)
+        return !!(c.host && c.database && c.user && c.port)
     }
 
     private describeError (error: any): string {
@@ -384,12 +410,11 @@ export class PostgresSyncService {
             }
             this.config.store.postgresSync.metadata = metadata
             await this.config.save()
+            if (concurrentChanges.size > 0) {
+                this.syncRequested = true
+            }
         } finally {
             this.applyingRemote = false
-        }
-        if (this.captureLocalChanges()) {
-            this.syncRequested = true
-            await this.saveWithoutQueuing()
         }
     }
 
@@ -565,6 +590,10 @@ export class PostgresSyncService {
      */
     private sanitizeSettings (value: any): Record<string, any> {
         const copy = this.clone(value)
+        // `copy` deliberately retains hotkeys, appearance (including the
+        // selected application theme), terminal.colorScheme and all ordinary
+        // plugin settings. This one global entity makes settings changes use
+        // the same pending/offline/conflict path as profiles and commands.
         delete copy.profiles
         delete copy.groups
         delete copy.postgresSync
@@ -602,14 +631,41 @@ export class PostgresSyncService {
     private applySettingsObject (target: any, source: any): void {
         for (const [key, value] of Object.entries(source ?? {})) {
             if (value && typeof value === 'object' && !Array.isArray(value)) {
-                if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
+                const currentValue = target[key]
+                if (!currentValue || typeof currentValue !== 'object' || Array.isArray(currentValue)) {
+                    // ConfigProxy exposes a number of plugin sections through
+                    // getter-only properties.  Older clients may have uploaded
+                    // those sections before they became device-local.  Never
+                    // attempt to replace such a property: doing so aborts the
+                    // whole synchronization with "has only a getter".
+                    if (!this.canAssignSetting(target, key)) {
+                        continue
+                    }
                     target[key] = {}
                 }
                 this.applySettingsObject(target[key], value)
             } else {
+                if (!this.canAssignSetting(target, key)) {
+                    continue
+                }
                 target[key] = this.clone(value)
             }
         }
+    }
+
+    private canAssignSetting (target: any, key: string): boolean {
+        let owner = target
+        while (owner) {
+            const descriptor = Object.getOwnPropertyDescriptor(owner, key)
+            if (descriptor) {
+                if ('set' in descriptor) {
+                    return typeof descriptor.set === 'function'
+                }
+                return descriptor.writable !== false
+            }
+            owner = Object.getPrototypeOf(owner)
+        }
+        return true
     }
 
     private newID (): string {

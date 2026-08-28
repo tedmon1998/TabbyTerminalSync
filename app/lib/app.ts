@@ -50,7 +50,10 @@ export class Application {
             await this.postgresSync.savePassword(connection, password)
         })
         ipcMain.handle('postgres-sync:get-password', async (_event, connection) => {
-            return await this.postgresSync.getPassword(connection)
+            return this.postgresSync.getPassword(connection)
+        })
+        ipcMain.handle('postgres-sync:has-password', async (_event, connection) => {
+            return this.postgresSync.hasPassword(connection)
         })
         ipcMain.handle('postgres-sync:clear-password', async (_event, connection) => {
             await this.postgresSync.clearPassword(connection)
@@ -96,7 +99,7 @@ export class Application {
             const needle = caseInsensitive ? fragment.toLocaleLowerCase() : fragment
             const directories = (await Promise.all(entries.map(async entry => {
                 const candidate = caseInsensitive ? entry.name.toLocaleLowerCase() : entry.name
-                if ((!fragment.startsWith('.') && entry.name.startsWith('.')) || !candidate.startsWith(needle)) { return null }
+                if (!fragment.startsWith('.') && entry.name.startsWith('.') || !candidate.startsWith(needle)) { return null }
                 let isDirectory = entry.isDirectory()
                 if (!isDirectory && entry.isSymbolicLink()) {
                     isDirectory = await fs.promises.stat(path.join(directory, entry.name)).then(stat => stat.isDirectory()).catch(() => false)
@@ -107,7 +110,7 @@ export class Application {
                     value: `${parentValue}${entry.name}${displaySeparator}`,
                     fullPath: path.join(directory, entry.name),
                 }
-            }))).filter(Boolean) as Array<{ name: string, value: string, fullPath: string }>
+            }))).filter(Boolean) as { name: string, value: string, fullPath: string }[]
             directories.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
             if (!fragment || '..'.startsWith(fragment)) {
                 directories.push({ name: '..', value: `${parentValue}..${displaySeparator}`, fullPath: path.resolve(directory, '..') })

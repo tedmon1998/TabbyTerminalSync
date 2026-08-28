@@ -61,17 +61,28 @@ export class PostgresSyncService {
             local_updated_at timestamptz NOT NULL,
             remote_updated_at timestamptz NOT NULL,
             created_at timestamptz NOT NULL DEFAULT now(),
-            resolved_at timestamptz
+            resolved_at timestamptz,
+            fingerprint text NOT NULL
         );
         CREATE INDEX IF NOT EXISTS objects_updated_at_idx ON tabby_sync.objects (scope, updated_at);
         CREATE INDEX IF NOT EXISTS conflicts_open_idx ON tabby_sync.conflicts (scope, resolved_at) WHERE resolved_at IS NULL;
+        CREATE INDEX IF NOT EXISTS conflicts_retention_idx ON tabby_sync.conflicts (scope, created_at);
+        CREATE UNIQUE INDEX IF NOT EXISTS conflicts_fingerprint_idx
+            ON tabby_sync.conflicts (scope, object_type, object_id, fingerprint);
     `
 
     async savePassword (connection: PostgresConnection, password: string): Promise<void> {
         if (!password) {
             return
         }
+        this.validate(connection)
         await keytar.setPassword(KEYTAR_SERVICE, this.account(connection), password)
+    }
+
+    async hasPassword (connection: PostgresConnection): Promise<boolean> {
+        this.validate(connection)
+        const password = await keytar.getPassword(KEYTAR_SERVICE, this.account(connection))
+        return !!password
     }
 
     async getPassword (connection: PostgresConnection): Promise<string> {
@@ -80,6 +91,7 @@ export class PostgresSyncService {
     }
 
     async clearPassword (connection: PostgresConnection): Promise<void> {
+        this.validate(connection)
         await keytar.deletePassword(KEYTAR_SERVICE, this.account(connection))
     }
 
@@ -90,8 +102,9 @@ export class PostgresSyncService {
             // Test is also the bootstrap action. A user should never have to
             // copy the migration into psql manually before the first sync.
             await client.query('BEGIN')
-            await this.ensureMigration(client)
+            const removed = await this.ensureMigration(client) + await this.prune(client)
             await client.query('COMMIT')
+            await this.reclaimSpace(client, removed)
         } catch (error) {
             await client.query('ROLLBACK').catch(() => undefined)
             throw this.describeConnectionError(error, connection)
@@ -106,11 +119,13 @@ export class PostgresSyncService {
         const client = await pool.connect()
         try {
             await client.query('BEGIN')
-            await this.ensureMigration(client)
+            const migratedRows = await this.ensureMigration(client)
 
             for (const entity of request.entities) {
                 await this.mergeEntity(client, entity, request)
             }
+
+            const removedRows = migratedRows + await this.prune(client)
 
             const { rows } = await client.query(
                 `SELECT object_type, object_id, payload, revision, updated_at, deleted_at
@@ -121,6 +136,7 @@ export class PostgresSyncService {
             )
             const clock = await client.query('SELECT clock_timestamp() AS synced_at')
             await client.query('COMMIT')
+            await this.reclaimSpace(client, removedRows)
             return {
                 entities: rows.map(row => ({
                     type: row.object_type,
@@ -153,6 +169,13 @@ export class PostgresSyncService {
         const localUpdated = new Date(local.updatedAt)
 
         if (!remote) {
+            // A clean entity which vanished from PostgreSQL was either deleted
+            // and its tombstone later expired, or removed administratively. It
+            // must not be resurrected by an old client. Brand-new local rows
+            // are always pending and still take the normal INSERT path.
+            if (!request.initial && local.pending === false) {
+                return
+            }
             await client.query(
                 `INSERT INTO tabby_sync.objects
                     (scope, object_type, object_id, payload, revision, updated_at, updated_by, deleted_at)
@@ -187,12 +210,7 @@ export class PostgresSyncService {
         const localWins = !request.initial && (basedOnCurrentRevision || timestampWins)
         if (localWins) {
             if (!basedOnCurrentRevision) {
-                await client.query(
-                    `INSERT INTO tabby_sync.conflicts
-                        (scope, object_type, object_id, local_payload, remote_payload, local_updated_at, remote_updated_at)
-                     VALUES ('default', $1, $2, $3, $4, $5, $6)`,
-                    [local.type, local.id, local.payload, remote.payload, localUpdated, remoteUpdated],
-                )
+                await this.recordConflict(client, local, remote.payload, localUpdated, remoteUpdated)
             }
             await client.query(
                 `UPDATE tabby_sync.objects SET payload = $3, revision = revision + 1,
@@ -202,16 +220,24 @@ export class PostgresSyncService {
                 [local.type, local.id, local.payload, request.deviceID, !!local.deleted],
             )
         } else {
-            await client.query(
-                `INSERT INTO tabby_sync.conflicts
-                    (scope, object_type, object_id, local_payload, remote_payload, local_updated_at, remote_updated_at)
-                 VALUES ('default', $1, $2, $3, $4, $5, $6)`,
-                [local.type, local.id, local.payload, remote.payload, localUpdated, remoteUpdated],
-            )
+            await this.recordConflict(client, local, remote.payload, localUpdated, remoteUpdated)
         }
     }
 
-    private async ensureMigration (client: any): Promise<void> {
+    private async recordConflict (client: any, local: SyncEntity, remotePayload: unknown, localUpdated: Date, remoteUpdated: Date): Promise<void> {
+        // fingerprint is generated from the canonical jsonb payloads. The
+        // unique index makes this operation idempotent across reconnects,
+        // repeated timers and multiple clients.
+        await client.query(
+            `INSERT INTO tabby_sync.conflicts
+                (scope, object_type, object_id, local_payload, remote_payload, local_updated_at, remote_updated_at)
+             VALUES ('default', $1, $2, $3, $4, $5, $6)
+             ON CONFLICT (scope, object_type, object_id, fingerprint) DO NOTHING`,
+            [local.type, local.id, local.payload, remotePayload, localUpdated, remoteUpdated],
+        )
+    }
+
+    private async ensureMigration (client: any): Promise<number> {
         const result = await client.query(
             `SELECT to_regclass('tabby_sync.objects') AS objects, to_regclass('tabby_sync.conflicts') AS conflicts`,
         )
@@ -230,6 +256,130 @@ export class PostgresSyncService {
             await client.query(`ALTER TABLE tabby_sync.objects DROP CONSTRAINT "${name}"`)
             await client.query(`ALTER TABLE tabby_sync.objects ADD CONSTRAINT objects_type_check CHECK (object_type IN ('settings', 'profile', 'profile-group', 'command-topic', 'command'))`)
         }
+
+        const fingerprintColumn = await client.query(`
+            SELECT a.attnotnull
+            FROM pg_attribute AS a
+            WHERE a.attrelid = 'tabby_sync.conflicts'::regclass
+              AND a.attname = 'fingerprint' AND NOT a.attisdropped
+        `)
+        if (!fingerprintColumn.rowCount) {
+            await client.query('ALTER TABLE tabby_sync.conflicts ADD COLUMN fingerprint text')
+        }
+        const fingerprintTrigger = await client.query(`
+            SELECT 1 FROM pg_trigger
+            WHERE tgrelid = 'tabby_sync.conflicts'::regclass
+              AND tgname = 'conflicts_set_fingerprint' AND NOT tgisinternal
+        `)
+        if (!fingerprintTrigger.rowCount) {
+            // A trigger keeps the schema compatible with an older Tabby build
+            // that still inserts the original conflict column set.
+            await client.query(`
+                CREATE OR REPLACE FUNCTION tabby_sync.set_conflict_fingerprint()
+                RETURNS trigger LANGUAGE plpgsql AS $function$
+                BEGIN
+                    NEW.fingerprint := md5(concat_ws(E'\\x1f', NEW.scope, NEW.object_type, NEW.object_id,
+                        coalesce(NEW.local_payload::text, '<null>'),
+                        coalesce(NEW.remote_payload::text, '<null>')));
+                    IF TG_OP = 'INSERT' THEN
+                        -- Serialize the same payload pair so even two legacy
+                        -- clients without ON CONFLICT cannot race each other.
+                        PERFORM pg_advisory_xact_lock(hashtext(NEW.fingerprint));
+                        IF EXISTS (
+                            SELECT 1 FROM tabby_sync.conflicts
+                            WHERE scope = NEW.scope AND object_type = NEW.object_type
+                              AND object_id = NEW.object_id AND fingerprint = NEW.fingerprint
+                        ) THEN
+                            RETURN NULL;
+                        END IF;
+                    END IF;
+                    RETURN NEW;
+                END
+                $function$
+            `)
+            await client.query(`
+                CREATE TRIGGER conflicts_set_fingerprint
+                BEFORE INSERT OR UPDATE OF scope, object_type, object_id, local_payload, remote_payload
+                ON tabby_sync.conflicts
+                FOR EACH ROW EXECUTE FUNCTION tabby_sync.set_conflict_fingerprint()
+            `)
+        }
+        await client.query(`
+            UPDATE tabby_sync.conflicts
+            SET fingerprint = md5(concat_ws(E'\\x1f', scope, object_type, object_id,
+                coalesce(local_payload::text, '<null>'),
+                coalesce(remote_payload::text, '<null>')))
+            WHERE fingerprint IS NULL
+        `)
+
+        // Upgrade old installations in place. Existing duplicate rows are
+        // byte-for-byte recovery copies, so keeping the newest one preserves
+        // all distinct versions while immediately removing the database bloat.
+        const duplicates = await client.query(`
+            WITH ranked AS (
+                SELECT id, row_number() OVER (
+                    PARTITION BY scope, object_type, object_id, fingerprint
+                    ORDER BY created_at DESC, id DESC
+                ) AS position
+                FROM tabby_sync.conflicts
+            )
+            DELETE FROM tabby_sync.conflicts AS conflict
+            USING ranked
+            WHERE conflict.id = ranked.id AND ranked.position > 1
+        `)
+        if (!fingerprintColumn.rows[0]?.attnotnull) {
+            await client.query('ALTER TABLE tabby_sync.conflicts ALTER COLUMN fingerprint SET NOT NULL')
+        }
+        await client.query(`
+            CREATE UNIQUE INDEX IF NOT EXISTS conflicts_fingerprint_idx
+                ON tabby_sync.conflicts (scope, object_type, object_id, fingerprint)
+        `)
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS conflicts_retention_idx
+                ON tabby_sync.conflicts (scope, created_at)
+        `)
+        return duplicates.rowCount ?? 0
+    }
+
+    /**
+     * Keeps recovery data useful but bounded. Active objects are never pruned.
+     * Tombstones get a long grace period so normally-offline devices observe
+     * deletions before those compact marker rows are removed.
+     */
+    private async prune (client: any): Promise<number> {
+        const expiredConflicts = await client.query(`
+            DELETE FROM tabby_sync.conflicts
+            WHERE resolved_at < clock_timestamp() - interval '30 days'
+               OR (resolved_at IS NULL AND created_at < clock_timestamp() - interval '90 days')
+        `)
+        const excessConflicts = await client.query(`
+            WITH ranked AS (
+                SELECT id, row_number() OVER (
+                    PARTITION BY scope, object_type, object_id
+                    ORDER BY created_at DESC, id DESC
+                ) AS position
+                FROM tabby_sync.conflicts
+            )
+            DELETE FROM tabby_sync.conflicts AS conflict
+            USING ranked
+            WHERE conflict.id = ranked.id AND ranked.position > 20
+        `)
+        const expiredTombstones = await client.query(`
+            DELETE FROM tabby_sync.objects
+            WHERE deleted_at < clock_timestamp() - interval '180 days'
+        `)
+        return (expiredConflicts.rowCount ?? 0) + (excessConflicts.rowCount ?? 0) + (expiredTombstones.rowCount ?? 0)
+    }
+
+    private async reclaimSpace (client: any, removedRows: number): Promise<void> {
+        if (removedRows < 100) {
+            return
+        }
+        // DELETE already makes pages reusable. VACUUM returns a one-off large
+        // duplicate incident to the operating system where the database role
+        // owns the table; lack of VACUUM permission must never fail sync.
+        await client.query('VACUUM (ANALYZE) tabby_sync.conflicts').catch(() => undefined)
+        await client.query('VACUUM (ANALYZE) tabby_sync.objects').catch(() => undefined)
     }
 
     private async open (connection: PostgresConnection): Promise<Pool> {

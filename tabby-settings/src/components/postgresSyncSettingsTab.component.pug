@@ -3,6 +3,9 @@ h3.mb-3 PostgreSQL sync
 .alert.alert-info
     | The password is stored in the operating system keychain. Test & initialize creates the database when permitted, then applies the tabby_sync schema and tables automatically.
 
+.alert.alert-secondary
+    | PostgreSQL sync also shares ordinary settings: hotkeys, application theme and light/dark mode, terminal color schemes and preferences, SSH/terminal options, and enabled plugin settings. Passwords, private-key passphrases, tokens, the Vault, PostgreSQL bootstrap details, and local command history stay on this device.
+
 .row.g-3
     .col-md-6
         label.form-label Host
@@ -26,6 +29,8 @@ h3.mb-3 PostgreSQL sync
                 i.fas([class.fa-eye]='!passwordVisible', [class.fa-eye-slash]='passwordVisible')
             button.btn.btn-outline-danger(type='button', *ngIf='config.store.postgresSync.passwordSaved', (click)='forgetPassword()', title='Forget saved password')
                 i.fas.fa-trash
+        .form-text.text-success(*ngIf='config.store.postgresSync.passwordSaved') Password remembered securely and reused after restarting Tabby.
+        .form-text(*ngIf='!config.store.postgresSync.passwordSaved') Enter it once, then use Test or Synchronize to remember it securely.
 
 .form-check.form-switch.mt-3
     input.form-check-input(type='checkbox', id='postgres-ssl', [(ngModel)]='config.store.postgresSync.ssl')

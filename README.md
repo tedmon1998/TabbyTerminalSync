@@ -1,3 +1,50 @@
+# Tabby Sync
+
+Customized Tabby terminal with PostgreSQL configuration synchronization, a command library, SFTP, local command history, voice input, and optional AI assistance.
+
+**Developer:** Edmont Tunyan
+
+## Build and install
+
+### macOS
+
+Requirements: macOS, Git and Node.js **22.12+**. The installer builds the app when a compatible bundle is not already present, backs up an existing `/Applications/Tabby Sync.app`, preserves Tabby settings, installs the new version, and opens it.
+
+```zsh
+cd /path/to/TabbyTerminalSync
+chmod +x ./install-macos.sh
+./install-macos.sh
+```
+
+To install an already-built app without rebuilding:
+
+```zsh
+./install-macos.sh --app "./dist/mac-arm64/Tabby Sync.app"
+```
+
+Use `--no-launch` to install without starting the app. `sudo` is not required.
+
+### Windows
+
+Requirements: **Windows** (physical PC or a Windows VM), Git, Node.js **22.12+**, and PowerShell. The Windows installer cannot be built by running its PowerShell script directly on macOS.
+
+Open PowerShell in the project directory and run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\build-windows-installer.ps1
+```
+
+For Windows on ARM:
+
+```powershell
+.\build-windows-installer.ps1 -Architecture arm64
+```
+
+The resulting installer and portable archive are written to `dist\tabby-*-setup-*.exe` and `dist\tabby-*-portable-*.zip`.
+
+---
+
 [![](docs/readme.png)](https://tabby.sh)
 
 

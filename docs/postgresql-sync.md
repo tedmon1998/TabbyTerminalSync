@@ -8,7 +8,7 @@ Enter a database name and a dedicated user. **Test & initialize** applies the id
 
 In **PostgreSQL sync**, enter the host, port, database and user, enter the password, then choose **Test & initialize**. The password is sent directly to the Electron main process and stored in the OS keychain under `Tabby PostgreSQL sync`; it is not persisted in `config.yaml`, PostgreSQL rows, logs, or IPC responses. Use **Synchronize** to enable the feature and perform the initial pull.
 
-The eye button retrieves the password from the OS keychain only after an explicit click. A keychain-loaded password is hidden automatically after 20 seconds and removed from the settings component's memory when hidden.
+The password is remembered across application restarts in macOS Keychain, Windows Credential Manager or the platform secret service. On startup, Tabby checks the keychain directly instead of trusting a stale flag in `config.yaml`, so automatic synchronization can resume without asking for the password again. The eye button retrieves the password only after an explicit click. A keychain-loaded password is hidden automatically after 20 seconds and removed from the settings component's memory when hidden.
 
 The configured port must expose the native PostgreSQL TCP protocol. Nginx `http`/`https` reverse-proxy blocks cannot proxy PostgreSQL. Use a direct published database port, an SSH tunnel, HAProxy TCP mode, or Nginx `stream`; if a port accepts TCP and immediately closes the PostgreSQL startup packet, Tabby reports that handshake stage directly.
 
@@ -16,7 +16,7 @@ TLS certificate verification is enabled by default. Keep it enabled for remote d
 
 ## Sync semantics
 
-The application synchronizes ordinary Tabby settings (appearance, terminal, hotkeys, SSH options, plugin settings, AI endpoint/model), user profiles, profile groups, command topics and commands. SSH passwords, private-key passphrases, API keys, access tokens and other credentials managed by Tabby's vault/keychain are intentionally not exported as profile JSON. The PostgreSQL connection settings themselves remain local bootstrap data: a new computer needs them in order to reach the database in the first place.
+The application synchronizes ordinary Tabby settings: hotkeys, application theme, light/dark mode, terminal colour schemes and preferences, SSH options, plugin settings, and AI endpoint/model; it also synchronizes user profiles, profile groups, command topics and commands. SSH passwords, private-key passphrases, API keys, access tokens and other credentials managed by Tabby's vault/keychain are intentionally not exported as profile JSON. The PostgreSQL connection settings themselves remain local bootstrap data: a new computer needs them in order to reach the database in the first place.
 
 The first synchronization treats rows already in PostgreSQL as authoritative for objects with the same ID, while preserving a conflicting local version in `tabby_sync.conflicts`. New local objects are added to the database. Afterwards, each change carries a device ID and timestamp. The newest change wins deterministically; the losing payload is retained in `tabby_sync.conflicts`, rather than being discarded. Deletes are soft deletes and are replicated using tombstones. This permits reconnecting clients to observe a deletion without accidentally recreating the item.
 
@@ -25,6 +25,12 @@ Every saved profile, group, command topic or command is marked pending and sent 
 Local changes made offline remain in the local configuration metadata and are retried immediately after a later save, every 30 seconds after reconnecting, and on the next manual synchronization. Pending state survives an application restart. A change made while another sync request is in flight is kept locally and queued for a follow-up request rather than being overwritten by the response already on its way.
 
 Each synchronized object records the PostgreSQL revision it was read from. An uncontended local edit based on that revision can therefore be committed without trusting workstation clock accuracy. Truly concurrent edits are resolved deterministically, and the losing payload remains in `tabby_sync.conflicts` for recovery/audit. A conflict row can be reviewed and marked resolved by an administrator after copying/restoring the payload of interest.
+
+### Automatic database housekeeping
+
+Synchronization storage is bounded and maintained automatically. Identical conflict payload pairs have a database-enforced fingerprint and can be stored only once, even if a reconnecting client repeats a request. On migration, duplicate copies are compacted while every distinct recovery version is preserved. Tabby keeps at most the 20 newest distinct conflicts per object, unresolved conflicts for 90 days, resolved conflicts for 30 days, and deletion tombstones for 180 days. Live profiles, groups, settings, topics and commands are never removed by housekeeping. After a large one-off cleanup, Tabby attempts `VACUUM (ANALYZE)` when the runtime role owns the tables; failure to vacuum does not fail synchronization because PostgreSQL can still reuse the freed pages.
+
+The runtime database role needs `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on `tabby_sync.objects` and `tabby_sync.conflicts`, plus sequence access. Schema migrations and the fingerprint trigger must initially be installed by the table owner; **Test & initialize** handles this automatically when the configured role owns the sync schema.
 
 ## Command library
 

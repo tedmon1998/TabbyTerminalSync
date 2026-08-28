@@ -22,6 +22,8 @@ The idempotent migration is [`db/migrations/20260824_tabby_postgres_sync.sql`](.
 - `tabby_sync.conflicts` for the losing payload of every real conflict;
 - soft-delete tombstones so an offline device cannot accidentally recreate a deleted object.
 
+Conflict storage is idempotent and bounded: PostgreSQL fingerprints each distinct local/remote payload pair, compacts legacy duplicates, retains at most 20 recovery versions per object, expires unresolved/resolved conflicts after 90/30 days, and removes tombstones after a 180-day offline-device grace period. Current synchronized objects are never pruned.
+
 The first synchronization pulls an existing row before replacing a same-ID local object. Later changes use deterministic last-write-wins timestamps, while the losing local or remote payload is retained in `tabby_sync.conflicts`. Offline changes remain in local metadata and are retried every 30 seconds and on manual Synchronize.
 
 Remote profile application preserves local password/passphrase fields that were deliberately omitted from PostgreSQL. Global settings are deep-merged so omitted local secrets and newer plugin defaults are not erased.
