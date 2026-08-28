@@ -50,7 +50,7 @@
     "graceful-fs": "^4.2.10",
     "html-loader": "4.2.0",
     "json-loader": "^0.5.7",
-    "lru-cache": "^6.0.0",
+    "lru-cache": "^11.5.2",
     "macos-release": "^3.3.0",
     "ngx-toastr": "^16.0.2",
     "ngx-filesize": "^3.0.2",
