@@ -1,0 +1,361 @@
+:host {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-drag: none;
+    will-change: transform;
+    cursor: default;
+    animation: 0.5s ease-out fadeIn;
+    transition: 0.25s background;
+
+    --tabs-height: calc(44px * var(--spaciness));
+    --side-tab-width: calc(200px * var(--spaciness));
+    --termius-ease: cubic-bezier(.2, .78, .2, 1);
+}
+
+// Tab bodies remain mounted for session recovery.  `app.activeTab` can still
+// point to an SSH session for a short time while Vaults is the visible body,
+// which used to leave an empty command-shelf column on its right.  Select the
+// actually visible body instead, so Vaults always owns the full workspace.
+:host:has(tab-body.content-tab-active vaults-tab) command-sidebar {
+    display: none !important;
+}
+
+$tab-border-radius: 4px;
+
+.wrap {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  flex-direction: row;
+}
+
+// The command shelf lives beside the workspace.  Keep the workspace an
+// explicit, stretchable flex item: without these constraints Bootstrap's
+// utility-only row can shrink to the tab strip's intrinsic width, leaving an
+// SSH terminal with a 2-column viewport after Vault restores a session.
+.workspace-row {
+    // Keep the original Tabby flex geometry. This grouping element is only
+    // present to make the Pug template readable; its children must remain
+    // direct flex items of `.window`.
+    display: contents !important;
+}
+
+.workspace-row > .content.main {
+    min-width: 0;
+}
+
+.content {
+    width: 100%;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column-reverse;
+
+    &.tabs-on-top {
+        flex-direction: column;
+    }
+
+    &.tabs-on-right {
+        flex-direction: row-reverse;
+    }
+
+    &.tabs-on-left {
+        flex-direction: row;
+    }
+}
+
+.content.tabs-on-left > .tab-bar, .content.tabs-on-right > .tab-bar {
+    height: 100%;
+    width: var(--side-tab-width);
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-direction: column;
+    background: var(--theme-bg-more-2);
+
+    .tabs {
+        width: var(--side-tab-width);
+        flex: none;
+        flex-direction: column;
+
+        tab-header {
+            flex: 0 0 var(--tabs-height);
+        }
+    }
+
+    .btn-space {
+        flex: auto;
+    }
+
+    &>.inset {
+        opacity: 0;
+        width: 100%;
+    }
+
+    ::ng-deep tab-header {
+        width: 100% !important;
+    }
+}
+
+.content.tabs-on-left > .tab-bar.tab-bar-no-controls-overlay, .content.tabs-titlebar-enabled {
+    .tabs {
+        padding-top: 0 !important;
+    }
+}
+
+.content.tabs-on-right > .tab-bar {
+    .tabs {
+        // Account for WCO on Windows.
+        padding-top: 36px;
+    }
+}
+
+.tab-bar {
+    flex: none;
+    height: var(--tabs-height);
+    display: flex;
+    width: 100%;
+    padding: 3px 5px;
+    background: color-mix(in srgb, var(--theme-bg-more-2) 88%, #171b2a);
+    border-bottom: 1px solid color-mix(in srgb, var(--theme-secondary) 72%, transparent);
+
+    .btn-tab-bar {
+        line-height: calc(var(--tabs-height) + 2px);
+        height: var(--tabs-height);
+        cursor: pointer;
+
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        flex: 0 0 auto;
+        border-bottom: 2px solid transparent;
+        margin: 1px 2px;
+        height: calc(var(--tabs-height) - 8px);
+        line-height: calc(var(--tabs-height) - 8px);
+        border-radius: 8px;
+        transition:
+            color 105ms ease-out,
+            background-color 105ms ease-out,
+            box-shadow 105ms ease-out,
+            filter 105ms ease-out,
+            opacity 105ms ease-out;
+        font-size: 12px;
+
+        text-transform: uppercase;
+        font-weight: bold;
+        color: #aaa;
+        border: none;
+        border-radius: 8px;
+
+        align-items: center;
+
+        &.dropdown-toggle::after {
+            display: none;
+        }
+    }
+
+    .btn-tab-bar:hover {
+        color: var(--theme-fg);
+        background: color-mix(in srgb, var(--theme-secondary) 75%, transparent);
+    }
+
+    // Termius does not visibly shrink toolbar controls. Pressing adds a short
+    // light surface flash and an inset edge, then releases over ~100 ms.
+    .btn-tab-bar:active {
+        background: color-mix(in srgb, var(--theme-secondary) 72%, white 16%);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+        filter: brightness(1.08);
+        transition-duration: 35ms;
+    }
+
+    &>.tabs {
+        flex: 0 1 auto;
+        display: flex;
+        min-width: 0;
+    }
+
+    &>.btn-space {
+        min-width: 1px;
+        flex: 1 0 1%;
+
+        .tabs-on-top & {
+            margin-top: 2px; // for window resizing
+        }
+
+        &.drag {
+            -webkit-app-region: drag;
+        }
+
+        &.persistent {
+        //   min-width: 72px; // 2 x 36 px height, ie 2 squares
+        // Given WCO on Windows, the min-width of the window buttons is about 138px.
+            min-width: 138px;
+        }
+    }
+
+    &>.window-controls-spacer {
+        min-width: 138px;
+        height: 100%;
+    }
+
+    & > .inset {
+        width: calc(70px + 15px * var(--spaciness));
+        height: var(--tabs-height);
+        flex: none;
+        -webkit-app-region: drag;
+    }
+
+    window-controls {
+        padding-left: 10px;
+    }
+
+    .cdk-drag-animating {
+        transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+    }
+
+    .cdk-drop-list-dragging tab-header:not(.cdk-drag-placeholder) {
+        transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+    }
+}
+
+// Termius keeps tabs as compact rounded cards.  The active state is a filled
+// surface, while hover/press feedback never changes the tab strip geometry.
+::ng-deep .tab-bar tab-header:not(.vertical) {
+    height: calc(var(--tabs-height) - 8px);
+    margin: 1px 3px;
+    padding: 0 12px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--theme-secondary) 30%, transparent);
+    transform: translateZ(0);
+    transition:
+        color 150ms ease,
+        background-color 150ms ease,
+        opacity 150ms ease,
+        box-shadow 150ms ease;
+}
+
+::ng-deep .tab-bar tab-header:not(.vertical):hover {
+    background: color-mix(in srgb, var(--theme-secondary) 62%, transparent);
+}
+
+::ng-deep .tab-bar tab-header:not(.vertical):active {
+    background: color-mix(in srgb, var(--theme-secondary) 72%, white 10%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06);
+    transition-duration: 35ms;
+}
+
+::ng-deep .tab-bar tab-header.active:not(.vertical) {
+    background: color-mix(in srgb, var(--theme-secondary) 88%, #34394d);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-fg) 5%, transparent);
+}
+
+::ng-deep .tab-bar tab-header:not(.vertical) .current-tab-indicator,
+::ng-deep .tab-bar tab-header:not(.vertical) .colorbar {
+    opacity: 0;
+}
+
+.content {
+    flex: 1 1 0;
+    position: relative;
+    min-height: 0;
+    min-width: 0;
+
+    > .content-tab {
+        position: absolute;
+        top: 0;
+        width: 100%;
+        height: 100%;
+
+        left: -1000%;
+
+        &.content-tab-active {
+            left: 0;
+        }
+    }
+}
+
+hotkey-hint {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    max-width: 300px;
+}
+
+::ng-deep .btn-tab-bar svg,
+::ng-deep .btn-tab-bar + .dropdown-menu svg {
+    width: calc(22px * var(--spaciness));
+    height: calc(16px * var(--spaciness));
+    fill: white;
+    fill-opacity: 0.75;
+}
+
+::ng-deep .btn-update svg {
+    fill: cyan;
+}
+
+::ng-deep .broadcast-status-warning {
+    background: red;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    padding: 5px 10px;
+    color: black;
+    border-radius: 0 0 5px 5px;
+
+    width: 300px;
+    margin-left: -150px;
+    text-align: center;
+    font-weight: bold;
+}
+
+// The snippets shelf is a fixed column beside the terminal. AI command
+// rewriting now lives as a tiny, terminal-native action and no longer reserves
+// a 270px chat row below the workspace.
+.window {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) 0;
+    grid-template-rows: minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    transition:
+        grid-template-columns 205ms var(--termius-ease);
+}
+
+.window.command-shelf-open {
+    grid-template-columns: auto minmax(0, 1fr) 330px;
+}
+
+.window > profile-tree {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.window > .content.main {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.window > command-sidebar.command-shelf {
+    grid-column: 3;
+    grid-row: 1;
+}
+
+::ng-deep body.resizing .window,
+::ng-deep body.sftp-resizing .window {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .window,
+    .tab-bar .btn-tab-bar,
+    ::ng-deep .tab-bar tab-header:not(.vertical) {
+        transition: none !important;
+    }
+}

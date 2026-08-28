@@ -1,0 +1,220 @@
+.vaults-layout([class.details-open]='!!editing')
+    aside.vault-nav
+        .vault-brand
+            i.fas.fa-vault.me-2
+            | Vaults
+        button.nav-item(type='button', [class.active]='activeSection === "hosts"', (click)='selectSection("hosts")')
+            i.fas.fa-server
+            | Hosts
+        button.nav-item(type='button', [class.active]='activeSection === "keychain"', (click)='selectSection("keychain")')
+            i.fas.fa-key
+            | Keychain
+        button.nav-item(type='button', [class.active]='activeSection === "forwards"', (click)='selectSection("forwards")')
+            i.fas.fa-right-left
+            | Port forwarding
+        button.nav-item(type='button', [class.active]='activeSection === "snippets"', (click)='selectSection("snippets")')
+            i.fas.fa-code
+            | Snippets
+        button.nav-item(type='button', [class.active]='activeSection === "known-hosts"', (click)='selectSection("known-hosts")')
+            i.fas.fa-fingerprint
+            | Known hosts
+        button.nav-item(type='button', [class.active]='activeSection === "logs"', (click)='selectSection("logs")')
+            i.fas.fa-clock-rotate-left
+            | Logs
+        button.nav-item(type='button', [class.active]='activeSection === "workspaces"', (click)='selectSection("workspaces")')
+            i.fas.fa-table-columns
+            | Workspaces
+
+    main.vault-main(*ngIf='activeSection === "hosts"', (click)='clearSelection($event)')
+        .vault-toolbar
+            .search-box
+                i.fas.fa-search
+                input(type='search', [(ngModel)]='query', placeholder='Find a host or SSH user@hostname…')
+            button.btn.btn-primary(type='button', (click)='openSettings("profiles")')
+                i.fas.fa-plus.me-2
+                | New host
+            button.btn.btn-secondary(type='button', (click)='refresh()', title='Refresh')
+                i.fas.fa-sync-alt([class.fa-spin]='loading')
+        .vault-content
+            .groups-label(*ngIf='!selectedGroupID') Groups
+            .host-groups(*ngIf='!selectedGroupID')
+                button.group-card(type='button', *ngFor='let group of groups', (click)='selectGroup(group)')
+                    i.fas.fa-table-cells-large
+                    .group-card-text
+                        strong {{group.name}}
+                        span {{group.profiles.length}} {{group.profiles.length === 1 ? 'host' : 'hosts'}}
+            .group-breadcrumb(*ngIf='selectedGroupID')
+                button(type='button', (click)='clearGroup()')
+                    i.fas.fa-chevron-left.me-2
+                    | All groups
+                i.fas.fa-chevron-right
+                strong {{selectedGroupName}}
+            .groups-label Hosts
+            .host-grid(*ngIf='filteredProfiles.length; else noHosts')
+                .host-card(*ngFor='let profile of filteredProfiles', role='button', tabindex='0', [class.selected]='selected?.id === profile.id', (click)='selectProfile(profile, $event)', (dblclick)='connect(profile)', (keydown.enter)='connect(profile)')
+                    i([class]='profile.type === "ssh" ? "fab fa-linux" : "fas fa-terminal"')
+                    .host-card-text
+                        strong {{profile.name}}
+                        span {{profile.options?.user ? profile.options.user + '@' : ''}}{{profile.options?.host || profile.type}}
+                    button.edit-host(type='button', title='Edit host', (click)='openEditor(profile, $event)')
+                        i.fas.fa-pen
+            ng-template(#noHosts)
+                .empty-panel
+                    i.fas.fa-server.fa-2x.mb-3
+                    h4 No saved hosts yet
+                    p Create one in the existing Tabby profile editor. It will appear here and sync to PostgreSQL.
+                    button.btn.btn-primary(type='button', (click)='openSettings("profiles")') Create host
+
+    aside.host-editor(
+        [class.open]='activeSection === "hosts" && !!editing',
+        [attr.aria-hidden]='activeSection !== "hosts" || !editing',
+        (click)='$event.stopPropagation()'
+    )
+        ng-container(*ngIf='activeSection === "hosts" && editing')
+            .details-header
+                div
+                    h4.mb-1 Edit host
+                    span Changes are saved to Tabby and PostgreSQL sync
+                button.btn.btn-link(type='button', (click)='closeEditor()', title='Close')
+                    i.fas.fa-times
+            .editor-section
+                label Name
+                input.form-control(type='text', [(ngModel)]='editing.name', (ngModelChange)='scheduleEditorSave()')
+                label Host address
+                input.form-control(type='text', [(ngModel)]='editing.options.host', (ngModelChange)='scheduleEditorSave()', placeholder='host or IP')
+                .editor-row
+                    div
+                        label User
+                        input.form-control(type='text', [(ngModel)]='editing.options.user', (ngModelChange)='scheduleEditorSave()')
+                    div
+                        label Port
+                        input.form-control(type='number', [(ngModel)]='editing.options.port', (ngModelChange)='scheduleEditorSave()')
+                label Group
+                select.form-control([(ngModel)]='editing.group', (ngModelChange)='scheduleEditorSave()')
+                    option(value='') Ungrouped
+                    option(*ngFor='let group of profileGroups', [value]='group.id') {{group.name}}
+                label Authentication
+                select.form-control([(ngModel)]='editing.options.auth', (ngModelChange)='scheduleEditorSave()')
+                    option([ngValue]='null') Auto
+                    option(value='password') Password
+                    option(value='publicKey') SSH key
+                    option(value='agent') SSH agent
+                    option(value='keyboardInteractive') Interactive
+                label Password
+                .input-group
+                    input.form-control([type]='passwordVisible ? "text" : "password"', [(ngModel)]='editing.options.password', (ngModelChange)='scheduleEditorSave()', placeholder='Optional encrypted credential')
+                    button.btn.btn-secondary(type='button', (click)='passwordVisible = !passwordVisible', [title]='passwordVisible ? "Hide password" : "Show password"')
+                        i.fas([class.fa-eye]='!passwordVisible', [class.fa-eye-slash]='passwordVisible')
+                .key-editor
+                    label SSH keys
+                    .attached-key(*ngFor='let reference of editing.options.privateKeys')
+                        i.fas.fa-key
+                        span {{reference}}
+                        button.icon-action(type='button', (click)='removePrivateKey(reference)', title='Remove key')
+                            i.fas.fa-times
+                    .detected-key-title(*ngIf='detectedPrivateKeys.length') Keys found on this computer
+                    button.detected-key(type='button', *ngFor='let key of detectedPrivateKeys', (click)='addDetectedPrivateKey(key)')
+                        i.fas.fa-key
+                        span ~/.ssh/{{key}}
+                        i.fas.fa-plus
+            .editor-actions-bottom
+                button.btn.btn-secondary(type='button', (click)='openSettings("profiles")') Advanced settings
+                button.btn.btn-primary(type='button', (click)='saveAndConnect()') Connect
+
+    main.vault-main.single(*ngIf='activeSection === "keychain"')
+        .vault-toolbar
+            h3.mb-0 Keychain
+            button.btn.btn-primary(type='button', (click)='openSettings("vault")')
+                i.fas.fa-plus.me-2
+                | Import key
+        .feature-note Private keys are encrypted in your Tabby vault. The vault passphrase and database password are never synchronized as plain text.
+        .key-grid(*ngIf='vaultFiles.length || detectedPrivateKeys.length; else noKeys')
+            .key-card(*ngFor='let key of vaultFiles')
+                i.fas.fa-key
+                div
+                    strong {{key.key.description}}
+                    span Vault identity
+            .key-card(*ngFor='let key of detectedPrivateKeys')
+                i.fas.fa-key
+                div
+                    strong {{key}}
+                    span ~/.ssh · local key
+        ng-template(#noKeys)
+            .empty-panel
+                i.fas.fa-key.fa-2x.mb-3
+                h4 No imported keys visible
+                p Unlock the vault, then import or manage identities in Vault settings.
+                button.btn.btn-secondary(type='button', (click)='openSettings("vault")') Open keychain settings
+
+    main.vault-main.single(*ngIf='activeSection === "snippets"')
+        .feature-panel
+            i.fas.fa-code.fa-2x
+            h3 Command library
+            p Manage categories and commands here. Copy and Run controls appear beside an active local or SSH terminal so a command is never sent to the wrong screen.
+            button.btn.btn-primary(type='button', (click)='openSettings("command-library")') Manage command library
+
+    main.vault-main.single(*ngIf='activeSection === "forwards"')
+        .vault-toolbar
+            h3.mb-0 Port forwarding
+            button.btn.btn-primary.ms-auto(type='button', (click)='openSettings("profiles")') Manage rules
+        .feature-list(*ngIf='forwardedRules.length; else noForwards')
+            .feature-card(*ngFor='let item of forwardedRules')
+                i.fas.fa-right-left
+                .feature-card-copy
+                    strong {{item.profile.name}} · {{item.rule.description || item.rule.type}}
+                    span {{item.rule.type}} · {{item.rule.host || "localhost"}}:{{item.rule.port}} → {{item.rule.targetAddress || "dynamic"}}:{{item.rule.targetPort || "—"}}
+                button.btn.btn-sm.btn-primary(type='button', (click)='connect(item.profile)') Connect
+        ng-template(#noForwards)
+            .feature-panel
+                i.fas.fa-right-left.fa-2x
+                h3 No saved forwarding rules
+                p Add local, remote or dynamic forwarding to an SSH host. Saved rules synchronize with that profile.
+                button.btn.btn-secondary(type='button', (click)='openSettings("profiles")') Open host settings
+
+    main.vault-main.single(*ngIf='activeSection === "known-hosts"')
+        .vault-toolbar
+            h3.mb-0 Known hosts
+            span.toolbar-note {{knownHosts.length}} trusted fingerprint(s)
+        .feature-list(*ngIf='knownHosts.length; else noKnownHosts')
+            .feature-card(*ngFor='let item of knownHosts')
+                i.fas.fa-fingerprint
+                .feature-card-copy
+                    strong {{item.host}}:{{item.port}}
+                    span {{item.type}} · {{item.digest}}
+                button.icon-action(type='button', (click)='forgetKnownHost(item)', title='Forget fingerprint')
+                    i.fas.fa-trash
+        ng-template(#noKnownHosts)
+            .feature-panel
+                i.fas.fa-fingerprint.fa-2x
+                h3 No trusted hosts yet
+                p A verified fingerprint is stored here after the first SSH connection.
+
+    main.vault-main.single(*ngIf='activeSection === "logs"')
+        .vault-toolbar
+            h3.mb-0 Command history
+            button.btn.btn-secondary.ms-auto(type='button', *ngIf='historyEntries.length', (click)='clearHistory()') Clear
+        .history-list(*ngIf='historyEntries.length; else noHistory')
+            .history-card(*ngFor='let item of historyEntries')
+                code {{item.command}}
+                span {{item.profile}} · {{item.createdAt|date:'short'}}
+        ng-template(#noHistory)
+            .feature-panel
+                i.fas.fa-clock-rotate-left.fa-2x
+                h3 No commands saved yet
+                p Completed command lines from local and SSH terminals appear here. Obvious password and token input is filtered before storage.
+
+    main.vault-main.single(*ngIf='activeSection === "workspaces"')
+        .vault-toolbar
+            h3.mb-0 Open workspaces
+        .feature-list(*ngIf='workspaceTabs.length; else noWorkspaces')
+            button.feature-card.workspace-card(type='button', *ngFor='let tab of workspaceTabs', (click)='selectWorkspaceTab(tab)')
+                i([class]='tab.icon || "fas fa-terminal"')
+                .feature-card-copy
+                    strong {{tab.customTitle || tab.title || "Terminal"}}
+                    span Open tab · select to continue
+                i.fas.fa-chevron-right
+        ng-template(#noWorkspaces)
+            .feature-panel
+                i.fas.fa-table-columns.fa-2x
+                h3 No other tabs are open
+                p Open a local terminal, connect to a host or start SFTP. Tabby session recovery keeps the workspace between launches.

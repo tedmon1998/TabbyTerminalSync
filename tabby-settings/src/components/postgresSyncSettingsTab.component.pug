@@ -1,0 +1,66 @@
+h3.mb-3 PostgreSQL sync
+
+.alert.alert-info
+    | The password is stored in the operating system keychain. Test & initialize creates the database when permitted, then applies the tabby_sync schema and tables automatically.
+
+.row.g-3
+    .col-md-6
+        label.form-label Host
+        input.form-control(type='text', [(ngModel)]='config.store.postgresSync.host', placeholder='db.example.com')
+    .col-md-2
+        label.form-label Port
+        input.form-control(type='number', [(ngModel)]='config.store.postgresSync.port')
+    .col-md-4
+        label.form-label Database
+        input.form-control(type='text', [(ngModel)]='config.store.postgresSync.database', placeholder='tabby')
+
+.row.g-3.mt-1
+    .col-md-6
+        label.form-label User
+        input.form-control(type='text', [(ngModel)]='config.store.postgresSync.user')
+    .col-md-6
+        label.form-label Password
+        .input-group
+            input.form-control([type]='passwordVisible ? "text" : "password"', [(ngModel)]='password', (ngModelChange)='onPasswordChanged()', [placeholder]='config.store.postgresSync.passwordSaved ? "Saved in system keychain" : "Enter password"', autocomplete='off')
+            button.btn.btn-outline-secondary(type='button', (click)='togglePasswordVisibility()', [disabled]='busy', [title]='passwordVisible ? "Hide password" : "Show password"', [attr.aria-label]='passwordVisible ? "Hide password" : "Show password"')
+                i.fas([class.fa-eye]='!passwordVisible', [class.fa-eye-slash]='passwordVisible')
+            button.btn.btn-outline-danger(type='button', *ngIf='config.store.postgresSync.passwordSaved', (click)='forgetPassword()', title='Forget saved password')
+                i.fas.fa-trash
+
+.form-check.form-switch.mt-3
+    input.form-check-input(type='checkbox', id='postgres-ssl', [(ngModel)]='config.store.postgresSync.ssl')
+    label.form-check-label(for='postgres-ssl') Require verified TLS certificate
+
+.d-flex.gap-2.mt-4
+    button.btn.btn-secondary(type='button', (click)='test()', [disabled]='busy || sync.syncing')
+        i.fas.fa-plug.me-2
+        | Test & initialize
+    button.btn(type='button', (click)='synchronize()', [disabled]='busy || sync.syncing', [class.btn-warning]='sync.needsSynchronization', [class.btn-primary]='!sync.needsSynchronization')
+        i.fas.fa-sync.me-2([class.fa-spin]='busy || sync.syncing')
+        | {{sync.needsSynchronization ? 'Synchronize now' : 'Synchronize again'}}
+
+.form-check.form-switch.mt-4
+    input.form-check-input(type='checkbox', id='postgres-auto-sync', [(ngModel)]='config.store.postgresSync.autoSync', (ngModelChange)='autoSyncChanged()')
+    label.form-check-label(for='postgres-auto-sync') Automatically sync changes and retry after reconnecting
+
+.card.mt-4
+    .card-body
+        .d-flex.justify-content-between.align-items-center.mb-3
+            strong Synchronization status
+            span.badge.bg-warning.text-dark(*ngIf='sync.needsSynchronization') Action required
+            span.badge.bg-success(*ngIf='!sync.needsSynchronization') Up to date
+        dl.row.mb-0
+            dt.col-sm-4 Last successful sync
+            dd.col-sm-8(*ngIf='sync.lastSuccessfulSyncAt') {{sync.lastSuccessfulSyncAt | date:'medium'}}
+            dd.col-sm-8.text-warning(*ngIf='!sync.lastSuccessfulSyncAt') Never synchronized
+            dt.col-sm-4 Last attempt
+            dd.col-sm-8(*ngIf='sync.lastAttemptAt') {{sync.lastAttemptAt | date:'medium'}}
+            dd.col-sm-8.text-muted(*ngIf='!sync.lastAttemptAt') No attempts yet
+            dt.col-sm-4 Pending local changes
+            dd.col-sm-8.mb-0 {{sync.pendingChangeCount}}
+
+.alert.mt-3([class.alert-success]='sync.online === true && !sync.needsSynchronization', [class.alert-warning]='sync.online === null || (sync.online === true && sync.needsSynchronization)', [class.alert-danger]='sync.online === false', role='status', aria-live='polite')
+    span(*ngIf='sync.online === true && !sync.needsSynchronization') Connected and up to date. {{sync.conflictCount}} unresolved conflict(s) are retained in tabby_sync.conflicts.
+    span(*ngIf='sync.online === true && sync.needsSynchronization') Connected. {{sync.pendingChangeCount}} local change(s) are waiting to be synchronized.
+    span(*ngIf='sync.online === null') Synchronization has not completed yet. Use Synchronize now after configuring the connection.
+    span(*ngIf='sync.online === false') Offline: {{sync.lastError}} Local changes will be retried when the connection returns.

@@ -1,0 +1,34 @@
+.pane-header
+    .pane-title
+        i.fas.fa-laptop.me-2
+        | Local
+    button.icon-button(type='button', (click)='navigate()', title='Refresh')
+        i.fas.fa-sync-alt
+.path-row
+    button.icon-button(type='button', (click)='navigate(path ? path.substring(0, path.lastIndexOf("/")) || "/" : undefined)', [disabled]='!path || path === "/"', title='Back')
+        i.fas.fa-chevron-left
+    .path-display {{path || 'Loading…'}}
+.filter-row
+    i.fas.fa-search
+    input(type='search', [(ngModel)]='filter', placeholder='Filter')
+.file-table
+    .table-head
+        span Name
+        span Modified
+        span Size
+        span Kind
+    .file-row.up(*ngIf='path && path !== "/"', (click)='navigate(path.substring(0, path.lastIndexOf("/")) || "/")')
+        i.fas.fa-level-up-alt
+        span ..
+        span.meta —
+        span.meta —
+        span.meta Folder
+    .file-row(*ngFor='let file of filteredFiles', (dblclick)='open(file)')
+        i([class]='file.isDirectory ? "fas fa-folder" : "fas fa-file"')
+        span.name {{file.name}}
+        span.meta {{formatDate(file.modified)}}
+        span.meta {{file.isDirectory ? '—' : formatSize(file.size)}}
+        span.meta {{file.isDirectory ? 'Folder' : 'File'}}
+    .empty(*ngIf='loading') Loading local files…
+    .empty.error(*ngIf='error') {{error}}
+    .empty(*ngIf='!loading && !error && !filteredFiles.length') Folder is empty

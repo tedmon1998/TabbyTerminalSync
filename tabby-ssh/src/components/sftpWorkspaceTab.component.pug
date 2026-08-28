@@ -1,0 +1,13 @@
+.sftp-workspace([style.grid-template-columns]='gridColumns', [class.resizing]='resizing')
+    sftp-workspace-pane([startLocal]='true')
+    .sftp-divider(
+        role='separator',
+        tabindex='0',
+        aria-orientation='vertical',
+        [attr.aria-valuenow]='leftWidth|number:"1.0-0"',
+        (mousedown)='startResize($event)',
+        (keydown.arrowleft)='nudgeResize(-2, $event)',
+        (keydown.arrowright)='nudgeResize(2, $event)',
+        title='Drag or use arrow keys to resize panes'
+    )
+    sftp-workspace-pane(#rightPane, [initialProfile]='initialProfile', [initialSession]='initialSession')

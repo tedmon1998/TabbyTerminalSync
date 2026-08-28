@@ -1,0 +1,37 @@
+h3.mb-3 Voice input
+
+.alert.alert-info
+    | GigaAM v3 E2E CTC Q4 runs locally on this Mac. Microphone recordings and transcriptions are never sent to the LLM or to PostgreSQL.
+
+.form-check.form-switch
+    input.form-check-input(type='checkbox', id='voice-enabled', [(ngModel)]='config.store.voiceInput.enabled')
+    label.form-check-label(for='voice-enabled') Enable voice transcription
+
+.row.g-3.mt-2
+    .col-md-4
+        label.form-label Maximum recording length
+        .input-group
+            input.form-control(type='number', min='1', max='25', [(ngModel)]='config.store.voiceInput.maxRecordingSeconds')
+            span.input-group-text seconds
+    .col-md-8
+        label.form-label Status
+        .form-control-plaintext {{statusText}}
+
+details.mt-3
+    summary Advanced: alternate runtime or model path
+    p.text-muted.mt-2.mb-2 Use this only on another platform or when replacing the bundled Q4 model.
+    label.form-label Runtime executable path
+    input.form-control.mb-2(type='text', [(ngModel)]='config.store.voiceInput.runtimePath', placeholder='Bundled runtime')
+    label.form-label GigaAM Q4 model path
+    input.form-control(type='text', [(ngModel)]='config.store.voiceInput.modelPath', placeholder='Bundled model')
+
+.d-flex.gap-2.mt-4
+    button.btn.btn-primary(type='button', (click)='save()')
+        i.fas.fa-save.me-2
+        | Save
+    button.btn.btn-secondary(type='button', (click)='refresh()')
+        i.fas.fa-rotate.me-2
+        | Check runtime
+
+p.text-muted.mt-3.mb-0
+    | The model is optimized for Russian and short utterances. Recording stops automatically at 25 seconds.

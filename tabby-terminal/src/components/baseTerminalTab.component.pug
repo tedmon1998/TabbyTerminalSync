@@ -1,0 +1,61 @@
+.terminal-toolbar-spacer
+.content(#content, [style.opacity]='frontendIsReady ? 1 : 0')
+.path-suggestions(*ngIf='pathSuggestionsVisible')
+    .path-suggestions-header
+        span
+            i.fas.fa-folder-open
+            |  Folders
+        span.path-suggestions-hint ↑↓ · Tab
+    .path-suggestions-loading(*ngIf='pathSuggestionsLoading && !pathSuggestions.length')
+        i.fas.fa-spinner.fa-spin
+        |  Reading folders…
+    button.path-suggestion(
+        *ngFor='let suggestion of pathSuggestions; let index = index',
+        type='button',
+        [class.selected]='index === pathSuggestionIndex',
+        (mouseenter)='selectPathSuggestion(index)',
+        (mousedown)='$event.preventDefault()',
+        (click)='acceptPathSuggestion(suggestion)'
+    )
+        i.fas.fa-folder
+        span {{suggestion.value}}
+.command-tools(*ngIf='commandToolsVisible')
+    button.voice-command-button(
+        *ngIf='voiceInputAvailable',
+        type='button',
+        [class.recording]='recordingVoice',
+        [disabled]='transcribingVoice',
+        [title]='recordingVoice ? "Stop and transcribe" : "Voice input"',
+        (mousedown)='$event.preventDefault()',
+        (click)='toggleVoiceCommand()'
+    )
+        i.fas.fa-stop(*ngIf='recordingVoice')
+        i.fas.fa-spinner.fa-spin(*ngIf='transcribingVoice')
+        i.fas.fa-microphone(*ngIf='!recordingVoice && !transcribingVoice')
+    button.ai-command-button(
+        *ngIf='aiRewriteAvailable || aiRewriteBusy',
+        type='button',
+        [disabled]='aiRewriteBusy',
+        [title]='aiRegenerateAvailable ? "Generate another command" : "Replace typed text with an AI-generated command"',
+        (mousedown)='$event.preventDefault()',
+        (click)='rewriteCurrentCommandWithAI(aiRegenerateAvailable)'
+    )
+        i.fas.fa-spinner.fa-spin(*ngIf='aiRewriteBusy')
+        i.fas.fa-rotate(*ngIf='!aiRewriteBusy && aiRegenerateAvailable')
+        i.fas.fa-wand-magic-sparkles(*ngIf='!aiRewriteBusy && !aiRegenerateAvailable')
+        span {{aiRegenerateAvailable ? 'Again' : 'AI'}}
+search-panel(
+    *ngIf='showSearchPanel && hasFocus && frontend',
+    @toolbarSlide,
+    [@.disabled]='!config.store.accessibility.animations',
+    [frontend]='frontend',
+    (close)='showSearchPanel = false; frontend.cancelSearch()'
+)
+
+button.btn.btn-sm.btn-link.toolbar-pin-button(
+    *ngIf='enableToolbar && !pinToolbar',
+    (click)='togglePinToolbar()',
+    (mouseenter)='showToolbar()',
+    (mouseleave)='hideToolbar()'
+)
+    i.fas.fa-wrench

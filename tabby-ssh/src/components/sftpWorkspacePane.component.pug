@@ -1,0 +1,93 @@
+.pane-shell([class.busy]='loading', [class.picker-open]='showPicker', (dragover)='allowDrop($event)', (drop)='acceptDrop($event)')
+    .pane-header
+        .pane-title
+            i.me-2([class]='source === "local" ? "fas fa-laptop" : "fas fa-server"')
+            | {{title}}
+        button.icon-button(type='button', (click)='openPicker()', title='Choose local computer or host')
+            i.fas.fa-chevron-down
+        button.icon-button(type='button', *ngIf='source !== "picker"', (click)='navigate(path)', title='Refresh')
+            i.fas.fa-sync-alt
+        button.icon-button(type='button', *ngIf='source === "remote"', (click)='uploadFiles()', title='Upload files')
+            i.fas.fa-upload
+        button.icon-button(type='button', *ngIf='source !== "picker"', (click)='createFolder()', title='New folder')
+            i.fas.fa-folder-plus
+        button.icon-button(type='button', *ngIf='selectedFile', (click)='renameSelected()', title='Rename selected item')
+            i.fas.fa-pen
+        button.icon-button.danger(type='button', *ngIf='selectedFile', (click)='deleteSelected()', title='Delete selected item')
+            i.fas.fa-trash
+
+    .source-picker(*ngIf='showPicker')
+        .picker-toolbar
+            i.fas.fa-search
+            input(type='search', [(ngModel)]='filter', placeholder='Search hosts')
+        button.picker-back(type='button', *ngIf='selectedGroup', (click)='selectGroup(null)')
+            i.fas.fa-chevron-left.me-2
+            | All hosts
+        h5(*ngIf='!selectedGroup && pickerGroups.length') Groups
+        .picker-groups(*ngIf='!selectedGroup && pickerGroups.length')
+            button.group-choice(type='button', *ngFor='let group of pickerGroups', (click)='selectGroup(group.id)')
+                i.fas.fa-table-cells-large
+                span
+                    strong {{group.name}}
+                    small {{group.count}} host(s)
+        h5 Hosts
+        button.source-choice.local(type='button', (click)='chooseLocal()')
+            i.fas.fa-laptop
+            span
+                strong Local
+                small This computer
+        button.source-choice(type='button', *ngFor='let item of filteredProfiles', (click)='chooseProfile(item)')
+            i.fab.fa-linux
+            span
+                strong {{item.name}}
+                small {{item.options?.user ? item.options.user + '@' : ''}}{{item.options?.host}}
+        .empty(*ngIf='loading') Connecting…
+        .empty.error(*ngIf='error') {{error}}
+
+    ng-container(*ngIf='!showPicker')
+        .path-row
+            button.icon-button(type='button', (click)='goUp()', [disabled]='!path || path === "/"', title='Parent folder')
+                i.fas.fa-chevron-left
+            .path-address
+                i.fas.fa-folder
+                input.path-input(
+                    type='text',
+                    [(ngModel)]='pathInput',
+                    (focus)='selectPathInput($event)',
+                    (keydown.enter)='navigatePathInput($event)',
+                    (keydown.escape)='resetPathInput($event)',
+                    [disabled]='loading',
+                    [attr.aria-label]='source === "local" ? "Local folder path" : "Remote folder path"',
+                    title='Paste a path and press Enter',
+                    spellcheck='false',
+                    autocomplete='off'
+                )
+                button.path-go(type='button', (click)='navigatePathInput()', [disabled]='loading || !pathInput.trim()', title='Open path', aria-label='Open path')
+                    i.fas.fa-arrow-right
+        .filter-row
+            i.fas.fa-search
+            input(type='search', [(ngModel)]='filter', placeholder='Filter')
+        .table-head
+            span Name
+            span Modified
+            span Size
+            span Kind
+            span(title='Read, write and execute permissions') Access
+        .file-list
+            .file-row(*ngIf='path && path !== "/"', role='button', tabindex='0', (keydown.enter)='goUp()', (dblclick)='goUp()')
+                i.fas.fa-level-up-alt
+                span.name ..
+                span.meta —
+                span.meta —
+                span.meta Folder
+                span.meta.permissions —
+            .file-row(*ngFor='let file of filteredFiles', role='button', tabindex='0', [attr.aria-label]='file.name', [class.selected]='selectedFile?.fullPath === file.fullPath', [draggable]='true', (click)='selectedFile = file', (keydown.enter)='open(file)', (dragstart)='startDrag(file, $event)', (dblclick)='open(file)')
+                i([class]='file.isDirectory ? "fas fa-folder" : "fas fa-file"')
+                span.name {{file.name}}
+                span.meta {{file.modified|tabbyDate}}
+                span.meta {{file.isDirectory ? '—' : formatSize(file.size)}}
+                span.meta {{file.isDirectory ? 'Folder' : 'File'}}
+                span.meta.permissions([title]='describePermissions(file)') {{formatPermissions(file)}}
+            .empty(*ngIf='loading') Loading…
+            .empty.error(*ngIf='error') {{error}}
+            .empty(*ngIf='!loading && !error && !filteredFiles.length') Folder is empty

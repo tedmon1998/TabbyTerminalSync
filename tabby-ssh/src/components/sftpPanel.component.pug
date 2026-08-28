@@ -1,0 +1,74 @@
+.body.dual-sftp([style.grid-template-columns]='gridColumns')
+    local-sftp-panel
+    .sftp-splitter((mousedown)='startResize($event)', title='Drag to resize panes')
+    .remote-pane(dropZone, (transfer)='uploadOneFolder($event)')
+        .pane-header
+            .pane-title
+                i.fas.fa-server.me-2
+                | {{session?.profile?.name || 'Remote'}}
+            button.icon-button(type='button', (click)='hostPickerOpen = !hostPickerOpen', [class.active]='hostPickerOpen', title='Choose host')
+                i.fas.fa-server
+            button.icon-button(type='button', (click)='showFilter = !showFilter', [class.active]='showFilter', title='Filter')
+                i.fas.fa-search
+            .actions-menu
+                button.icon-button(type='button', (click)='openCreateDirectoryModal()', title='New folder')
+                    i.fas.fa-folder-plus
+                button.icon-button(type='button', (click)='upload()', title='Upload files')
+                    i.fas.fa-upload
+                button.icon-button(type='button', (click)='uploadFolder()', title='Upload folder')
+                    i.fas.fa-folder-arrow-up
+                button.icon-button(type='button', (click)='navigate(path)', title='Refresh')
+                    i.fas.fa-sync-alt
+        .host-picker(*ngIf='hostPickerOpen')
+            .picker-title Choose remote host
+            .picker-search
+                i.fas.fa-search
+                input(type='search', [(ngModel)]='hostFilter', placeholder='Find a saved host')
+            button.host-choice(type='button', *ngFor='let profile of filteredProfiles', [class.selected]='profile.id === session?.profile?.id', (click)='selectRemoteProfile(profile)')
+                i.fab.fa-linux
+                span
+                    strong {{profile.name}}
+                    small {{profile.options?.user ? profile.options.user + '@' : ''}}{{profile.options?.host || 'SSH'}}
+            .picker-empty(*ngIf='!filteredProfiles.length') No saved SSH hosts
+        .path-row
+            button.icon-button(type='button', (click)='goUp()', [disabled]='path === "/"', title='Back')
+                i.fas.fa-chevron-left
+            input.path-input(*ngIf='editingPath !== null', type='text', autofocus, (keydown.enter)='confirmPath()', (keydown.esc)='editingPath = null', (blur)='editingPath = null', [(ngModel)]='editingPath')
+            .breadcrumb(*ngIf='editingPath === null', (dblclick)='editPath()')
+                a.breadcrumb-item.text-decoration-none((click)='navigate("/")') /
+                a.breadcrumb-item.text-decoration-none(*ngFor='let segment of pathSegments', (click)='navigate(segment.path)') {{segment.name}}
+        .filter-row(*ngIf='showFilter')
+            i.fas.fa-search
+            input(type='search', placeholder='Filter', autofocus, [(ngModel)]='filterText', (input)='onFilterChange()', (keydown.escape)='clearFilter()')
+            button.icon-button(type='button', (click)='clearFilter()', title='Clear filter')
+                i.fas.fa-times
+        a.alert.alert-info.d-flex.align-items-center(*ngIf='shouldShowCWDTip && !cwdDetectionAvailable', (click)='platform.openExternal("https://tabby.sh/go/cwd-detection")')
+            .me-auto
+                strong(translate) Working directory detection
+                div(translate) Learn how to allow Tabby to detect remote shell's working directory.
+            button.close((click)='dismissCWDTip()')
+                i.fas.fa-close
+        div.remote-state(*ngIf='!sftp && !hostPickerOpen') Select a saved SSH host
+        div(*ngIf='sftp')
+            div.remote-state(*ngIf='fileList === null', translate) Loading
+            .remote-list(*ngIf='fileList !== null')
+                .table-head
+                    span Name
+                    span Modified
+                    span Size
+                    span Kind
+                .file-row(*ngIf='path !== "/" && (!showFilter || filterText.trim() === "")', (click)='goUp()')
+                    i.fas.fa-fw.fa-level-up-alt
+                    .file-name ..
+                    span.meta —
+                    span.meta —
+                    span.meta Folder
+                .file-row(*ngFor='let item of filteredFileList', (contextmenu)='showContextMenu(item, $event)', (dblclick)='open(item)')
+                    i.fa-fw([class]='getIcon(item)')
+                    div.file-name {{item.name}}
+                    span.meta {{item.modified|tabbyDate}}
+                    span.meta {{item.isDirectory ? '—' : (item.size|filesize)}}
+                    span.meta {{item.isDirectory ? 'Folder' : 'File'}}
+            .remote-state(*ngIf='fileList !== null && filteredFileList.length === 0 && showFilter && filterText.trim() !== ""')
+                i.fas.fa-search.me-2
+                | No remote files match the filter

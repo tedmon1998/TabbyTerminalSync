@@ -1,0 +1,52 @@
+h3.mb-3 Command library
+
+.row.g-4
+    .col-lg-4
+        label.form-label Topic / category
+        .input-group.mb-2
+            input.form-control(type='text', [(ngModel)]='newTopicName', (keydown.enter)='addTopic()', placeholder='e.g. Nginx')
+            button.btn.btn-primary(type='button', (click)='addTopic()') Add
+        .list-group
+            button.list-group-item.list-group-item-action(type='button', *ngFor='let topic of topics', [class.active]='topic.id === selectedTopicID', (click)='selectedTopicID = topic.id; editing = null') {{topic.name}}
+
+    .col-lg-8(*ngIf='selectedTopic; else selectTopic')
+        .d-flex.align-items-center.mb-3
+            input.form-control.me-2(type='text', [(ngModel)]='selectedTopic.name', (change)='saveTopic()')
+            button.btn.btn-outline-danger(type='button', (click)='deleteTopic()', title='Delete topic and commands')
+                i.fas.fa-trash
+            button.btn.btn-primary.ms-2(type='button', (click)='newCommand()')
+                i.fas.fa-plus.me-2
+                | Command
+
+        .list-group.mb-4
+            .list-group-item(*ngFor='let command of visibleCommands')
+                .d-flex.align-items-start
+                    .me-auto
+                        strong {{command.name}}
+                        p.mb-1.text-muted(*ngIf='command.description') {{command.description}}
+                        code.d-block.text-break {{command.command}}
+                    .btn-group.ms-2
+                        button.btn.btn-sm.btn-outline-secondary(type='button', (click)='copy(command)')
+                            i.fas.fa-copy.me-1
+                            | Copy
+                        button.btn.btn-sm.btn-primary(type='button', (click)='run(command)')
+                            i.fas.fa-play.me-1
+                            | Run in current terminal
+                        button.btn.btn-sm.btn-outline-secondary(type='button', (click)='edit(command)', title='Edit')
+                            i.fas.fa-pen
+                        button.btn.btn-sm.btn-outline-danger(type='button', (click)='deleteCommand(command)', title='Delete')
+                            i.fas.fa-trash
+
+        form.border.rounded.p-3(*ngIf='editing', (ngSubmit)='saveCommand()')
+            h5 {{editingExistingCommand ? 'Edit command' : 'New command'}}
+            label.form-label Name
+            input.form-control.mb-2(type='text', [(ngModel)]='editing.name', name='command-name', required)
+            label.form-label Description
+            input.form-control.mb-2(type='text', [(ngModel)]='editing.description', name='command-description')
+            label.form-label Command
+            textarea.form-control.mb-3(rows='5', [(ngModel)]='editing.command', name='command-text', required)
+            button.btn.btn-primary(type='submit') Save command
+            button.btn.btn-link(type='button', (click)='editing = null') Cancel
+
+ng-template(#selectTopic)
+    .col-lg-8.text-muted Select a topic or create one to start building a reusable command library.

@@ -1,0 +1,226 @@
+:host {
+    flex: auto;
+    display: flex;
+    flex-direction: column;
+    // overflow: hidden;
+    position: relative;
+
+    &> .content {
+        flex: auto;
+        position: relative;
+        display: block;
+        overflow: hidden;
+        margin: calc(max(0px, 30px * var(--spaciness) - 15px));
+        transition: opacity ease-out 0.25s;
+        opacity: 0;
+
+        div[style]:last-child {
+            background: black !important;
+            color: white !important;
+        }
+    }
+
+    // Reserve a slim command-tool strip instead of covering the terminal or
+    // shrinking it with the former 270px AI chat. The AI button itself appears
+    // only while a pending shell line can be rewritten.
+    &.command-tools-visible > .content {
+        margin-bottom: calc(max(0px, 30px * var(--spaciness) - 15px) + 42px);
+    }
+
+    > .command-tools {
+        position: absolute;
+        z-index: 5;
+        right: 12px;
+        bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        animation: command-tools-in 125ms cubic-bezier(.2, .78, .2, 1) both;
+    }
+
+    > .path-suggestions {
+        position: absolute;
+        z-index: 6;
+        left: 12px;
+        bottom: 48px;
+        width: min(520px, calc(100% - 24px));
+        max-height: min(260px, 42vh);
+        overflow: auto;
+        padding: 6px;
+        border: 1px solid rgba(255, 255, 255, .08);
+        border-radius: 10px;
+        color: var(--theme-fg);
+        background: color-mix(in srgb, var(--theme-bg) 92%, #252b3a);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, .32);
+        animation: path-suggestions-in 115ms cubic-bezier(.2, .78, .2, 1) both;
+    }
+
+    .path-suggestions-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 28px;
+        padding: 2px 8px 5px;
+        color: color-mix(in srgb, var(--theme-fg) 70%, transparent);
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .path-suggestions-hint {
+        font-weight: 500;
+        opacity: .65;
+    }
+
+    .path-suggestions-loading {
+        padding: 10px 8px;
+        color: color-mix(in srgb, var(--theme-fg) 62%, transparent);
+        font-size: 12px;
+    }
+
+    .path-suggestion {
+        display: flex;
+        width: 100%;
+        min-height: 32px;
+        align-items: center;
+        gap: 9px;
+        padding: 5px 9px;
+        overflow: hidden;
+        border: 0;
+        border-radius: 7px;
+        color: var(--theme-fg);
+        background: transparent;
+        text-align: left;
+        transition: background-color 80ms ease-out, transform 45ms ease-out;
+
+        i { color: #5ab7ed; }
+        span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        &.selected {
+            background: color-mix(in srgb, var(--theme-primary) 22%, transparent);
+        }
+
+        &:active { transform: scale(.995); }
+    }
+
+    .voice-command-button,
+    .ai-command-button {
+        height: 32px;
+        border: 0;
+        border-radius: 8px;
+        color: var(--theme-fg);
+        background: color-mix(in srgb, var(--theme-secondary) 80%, #34384a);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .055);
+        transition:
+            color 105ms ease-out,
+            background-color 105ms ease-out,
+            box-shadow 105ms ease-out,
+            filter 105ms ease-out;
+    }
+
+    .voice-command-button {
+        width: 32px;
+        padding: 0;
+    }
+
+    .ai-command-button {
+        display: inline-flex;
+        min-width: 48px;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 0 10px;
+        color: #fff;
+        background: color-mix(in srgb, var(--theme-primary) 82%, #6674c8);
+        font-size: 12px;
+        font-weight: 750;
+    }
+
+    .voice-command-button:hover:not(:disabled),
+    .ai-command-button:hover:not(:disabled) {
+        filter: brightness(1.09);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1);
+    }
+
+    .voice-command-button:active:not(:disabled),
+    .ai-command-button:active:not(:disabled) {
+        filter: brightness(1.18);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14);
+        transition-duration: 35ms;
+    }
+
+    .voice-command-button:disabled,
+    .ai-command-button:disabled { opacity: .58; }
+
+    .voice-command-button.recording {
+        color: #fff;
+        background: #d85865;
+        animation: command-recording-pulse 1.1s ease-in-out infinite;
+    }
+
+    $toolbarHeight: 40px;
+
+    > terminal-toolbar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 4;
+
+        opacity: 0;
+        transition: 0.25s opacity;
+        will-change: transform;
+        transform: translate(0, -100px);
+        transition: 0.25s transform ease-out;
+        height: $toolbarHeight;
+    }
+
+    &.toolbar-revealed, &.toolbar-pinned {
+        > terminal-toolbar {
+            opacity: 1;
+            transform: translate(0, 0);
+        }
+    }
+
+    > .toolbar-pin-button {
+        position: absolute;
+        right: 34px;
+        top: 5px;
+        z-index: 4;
+        background: #00000047;
+    }
+
+    &.toolbar-pinned > .terminal-toolbar-spacer {
+        width: 100%;
+        height: $toolbarHeight;
+    }
+}
+
+@keyframes command-tools-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes command-recording-pulse {
+    50% { filter: brightness(1.18); box-shadow: 0 0 0 5px rgba(216, 88, 101, .14); }
+}
+
+@keyframes path-suggestions-in {
+    from { opacity: 0; transform: translateY(5px) scale(.992); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :host > .command-tools,
+    :host > .path-suggestions,
+    :host .path-suggestion,
+    :host .voice-command-button,
+    :host .ai-command-button { animation: none !important; transition: none !important; }
+}
+
+:host-context(.with-title-inset) {
+    padding-top: 20px;
+
+    terminal-toolbar {
+        padding-left: 90px;
+    }
+}

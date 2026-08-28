@@ -1,0 +1,119 @@
+.command-sidebar-header
+    .panel-tabs
+        button.panel-icon(type='button', *ngIf='!bottomMode', title='Command snippets', [class.active]='activePanel === "snippets"', (click)='activePanel = "snippets"')
+            i.fas.fa-code
+        button.panel-icon(type='button', *ngIf='!bottomMode', title='Command history', [class.active]='activePanel === "history"', (click)='activePanel = "history"')
+            i.fas.fa-clock
+        span.bottom-title(*ngIf='bottomMode')
+            i.fas.fa-wand-magic-sparkles.me-2
+            | AI command chat
+    button.panel-icon.close(type='button', [title]='bottomMode ? "Close AI chat" : "Close snippets"', (click)='closePanel()')
+        i.fas.fa-times
+
+.assistant-panel(*ngIf='bottomMode || activePanel === "assistant"')
+    .assistant-title(*ngIf='!bottomMode')
+        i.fas.fa-wand-magic-sparkles.me-2
+        | AI command assistant
+    p.assistant-note Ask in plain language. Context is collected only after Ask and is never written to the terminal.
+    .voice-textarea
+        textarea.form-control(rows='3', [(ngModel)]='assistantQuestion', placeholder='For example: how do I start Docker here?', (keydown.meta.enter)='askAssistant()', (keydown.control.enter)='askAssistant()')
+        button.voice-button(type='button', [class.recording]='recording', [disabled]='transcribingVoice', (click)='toggleVoiceRecording()', [title]='recording ? "Stop and transcribe" : "Voice input"')
+            i.fas.fa-stop(*ngIf='recording')
+            i.fas.fa-spinner.fa-spin(*ngIf='transcribingVoice')
+            i.fas.fa-microphone(*ngIf='!recording && !transcribingVoice')
+    .voice-status(*ngIf='voiceStatus')
+        i.fas.fa-microphone-lines.me-2
+        | {{voiceStatus}}
+    .assistant-context
+        i.fas.fa-shield-halved.me-2
+        span {{assistantContextSummary || 'Will use OS and current working directory. File names are included only if enabled in AI settings.'}}
+    button.btn.btn-primary.w-100.mt-2(type='button', (click)='askAssistant()', [disabled]='assistantBusy || !assistantQuestion.trim()')
+        i.fas.fa-spinner.fa-spin.me-2(*ngIf='assistantBusy')
+        i.fas.fa-wand-magic-sparkles.me-2(*ngIf='!assistantBusy')
+        | Ask
+    .assistant-result(*ngIf='assistantResult')
+        .assistant-explanation {{assistantResult.explanation || 'Suggested command:'}}
+        code {{assistantResult.command || 'No command was returned. Read the explanation above.'}}
+        .assistant-actions(*ngIf='assistantResult.command')
+            button.btn-paste(type='button', (click)='insertAssistantCommand()') Copy
+            button.btn-run(type='button', (click)='runAssistantCommand()') Run in terminal
+
+.command-toolbar(*ngIf='activePanel === "snippets"')
+    button.btn.btn-snippet(type='button', (click)='newCommand()')
+        i.fas.fa-code.me-2
+        | New Snippet
+    button.btn.btn-icon(type='button', title='New category', (click)='newTopic()')
+        i.fas.fa-folder-plus
+    .toolbar-spacer
+    i.fas.fa-search.search-icon
+    input.search-input(type='search', [(ngModel)]='query', placeholder='Search')
+
+.editor-card(*ngIf='activePanel === "snippets" && editingTopic')
+    .editor-title {{creatingTopic ? 'New category' : 'Edit category'}}
+    input.form-control.form-control-sm.mb-2(type='text', [(ngModel)]='editingTopic.name', placeholder='Category name', (keydown.enter)='saveTopic()')
+    input.form-control.form-control-sm.mb-2(type='text', [(ngModel)]='editingTopic.description', placeholder='Description (optional)')
+    .editor-actions
+        button.btn.btn-sm.btn-primary(type='button', (click)='saveTopic()') Save
+        button.btn.btn-sm.btn-link(type='button', (click)='closeTopicEditor()') Cancel
+
+.editor-card(*ngIf='activePanel === "snippets" && editingCommand')
+    .editor-title {{creatingCommand ? 'New command' : 'Edit command'}}
+    input.form-control.form-control-sm.mb-2(type='text', [(ngModel)]='editingCommand.name', placeholder='Name')
+    select.form-select.form-select-sm.mb-2([(ngModel)]='editingCommand.topicId')
+        option(*ngFor='let topic of topics', [value]='topic.id') {{topic.name}}
+    input.form-control.form-control-sm.mb-2(type='text', [(ngModel)]='editingCommand.description', placeholder='Description (optional)')
+    textarea.form-control.form-control-sm.mb-2(rows='4', [(ngModel)]='editingCommand.command', placeholder='Command to run')
+    .editor-actions
+        button.btn.btn-sm.btn-primary(type='button', (click)='saveCommand()') Save
+        button.btn.btn-sm.btn-link(type='button', (click)='closeCommandEditor()') Cancel
+
+.topics-list(*ngIf='activePanel === "snippets" && filteredTopics.length; else empty')
+    .topic-group(*ngFor='let topic of filteredTopics')
+        .topic-header
+            button.topic-toggle(type='button', (click)='toggleTopic(topic)')
+                i.fas.me-2([class.fa-chevron-right]='!isExpanded(topic)', [class.fa-chevron-down]='isExpanded(topic)')
+                span.topic-name {{topic.name}}
+                span.topic-count {{commandsFor(topic.id).length}} command(s)
+            .topic-actions
+                button.btn-icon.small(type='button', title='New command in this category', (click)='newCommand(topic.id)')
+                    i.fas.fa-plus
+                button.btn-icon.small(type='button', title='Edit category', (click)='editTopic(topic)')
+                    i.fas.fa-pen
+                button.btn-icon.small.danger(type='button', title='Delete category', (click)='deleteTopic(topic)')
+                    i.fas.fa-trash
+        .commands-shell([class.expanded]='isExpanded(topic)', [attr.aria-hidden]='!isExpanded(topic)')
+            .commands
+                .command-card(*ngFor='let command of commandsFor(topic.id)')
+                    .command-copy
+                        .command-title
+                            i.fas.fa-star.me-1(*ngIf='command.favorite')
+                            | {{command.name}}
+                        .command-description(*ngIf='command.description') {{command.description}}
+                        code {{command.command}}
+                    .command-actions
+                        button.btn-run(type='button', (click)='run(command)') Run
+                        button.btn-paste(type='button', (click)='copy(command)') Copy
+                        button.btn-icon.small(type='button', title='Favorite', [class.favorite]='command.favorite', (click)='toggleFavorite(command)')
+                            i.fas.fa-star
+                        button.btn-icon.small(type='button', title='Edit command', (click)='editCommand(command)')
+                            i.fas.fa-pen
+                        button.btn-icon.small.danger(type='button', title='Delete command', (click)='deleteCommand(command)')
+                            i.fas.fa-trash
+
+ng-template(#empty)
+    div(*ngIf='activePanel === "snippets"')
+        .empty-state
+            i.fas.fa-code.fa-2x.mb-2
+            .mb-2 No command categories yet
+            button.btn.btn-snippet(type='button', (click)='newTopic()')
+                i.fas.fa-folder-plus.me-2
+                | Create category
+
+.history-panel(*ngIf='!bottomMode && activePanel === "history"')
+    .history-empty(*ngIf='!historyEntries.length') No saved commands yet.
+    .history-entry(*ngFor='let entry of historyEntries')
+        code {{entry.command}}
+        .history-meta {{entry.profile}} · {{entry.createdAt|date:'short'}}
+        .history-actions
+            button.btn-paste(type='button', (click)='copyHistory(entry)') Copy
+            button.btn-run(type='button', (click)='runHistory(entry)') Run

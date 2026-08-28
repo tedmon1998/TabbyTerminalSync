@@ -1,0 +1,52 @@
+h3.mb-3 AI command assistant
+
+.alert.alert-info
+    | Connect either a direct Ollama server or your own Open WebUI. Testing loads the models currently available to your account.
+
+.row.g-3
+    .col-md-4
+        label.form-label Provider
+        select.form-select([(ngModel)]='config.store.llmAssistant.provider', (ngModelChange)='onProviderChanged()')
+            option(value='ollama') Ollama
+            option(value='openWebUI') Open WebUI
+    .col-md-8
+        label.form-label {{ providerName }} server IP or URL
+        input.form-control(type='text', [(ngModel)]='providerSettings.baseUrl', (ngModelChange)='onServerChanged()', (keyup.enter)='testAndLoadModels()', (blur)='refreshApiKeyStatus()', [placeholder]='provider === "ollama" ? "192.168.1.20:11434" : "https://openwebui.example.com"', autocomplete='off', spellcheck='false')
+        .form-text(*ngIf='provider === "ollama"') A bare Ollama IP uses port 11434 when the port is omitted.
+        .form-text(*ngIf='provider === "openWebUI"') Enter the public Open WebUI root address, without /api/models or /api/chat/completions.
+
+.mt-3(*ngIf='provider === "openWebUI"')
+    label.form-label Open WebUI API key
+    .input-group
+        input.form-control(type='password', [(ngModel)]='apiKey', [placeholder]='providerSettings.apiKeySaved ? "Saved in system keychain" : "Optional only when authentication is disabled"', autocomplete='new-password')
+        button.btn.btn-outline-danger(type='button', *ngIf='providerSettings.apiKeySaved', (click)='forgetApiKey()', title='Remove the saved API key')
+            i.fas.fa-trash
+    .form-text The key is stored only in the operating system keychain. Create it in Open WebUI under Settings → Account → API Keys.
+
+.mt-3.d-flex.justify-content-end
+    button.btn.btn-secondary(type='button', (click)='testAndLoadModels()', [disabled]='busy || !providerSettings.baseUrl')
+        i.fas.me-2([class.fa-spinner]='busy', [class.fa-spin]='busy', [class.fa-plug]='!busy')
+        | {{ busy ? 'Testing...' : 'Test connection and load models' }}
+
+.alert.alert-danger.mt-3.mb-0(*ngIf='connectionError')
+    i.fas.fa-circle-exclamation.me-2
+    | {{ connectionError }}
+
+.mt-4(*ngIf='connectionVerified')
+    label.form-label Available {{ providerName }} models
+    select.form-select([(ngModel)]='providerSettings.model', (ngModelChange)='saveModel()', [disabled]='!availableModels.length')
+        option(value='', *ngIf='!availableModels.length') No models found
+        option(*ngFor='let model of availableModels', [value]='model.model') {{ model.name }}{{ modelDetails(model) ? ' — ' + modelDetails(model) : '' }}
+    .form-text(*ngIf='availableModels.length') Loaded {{ availableModels.length }} model{{ availableModels.length === 1 ? '' : 's' }} from this server.
+    .form-text.text-warning(*ngIf='!availableModels.length') The server is reachable, but this account has no available models.
+
+.form-check.form-switch.mt-4
+    input.form-check-input(type='checkbox', id='ai-enabled', [(ngModel)]='config.store.llmAssistant.enabled', (ngModelChange)='config.save()', [disabled]='!providerSettings.model')
+    label.form-check-label(for='ai-enabled') Enable AI assistant
+
+.form-check.form-switch.mt-3
+    input.form-check-input(type='checkbox', id='ai-directory-names', [(ngModel)]='config.store.llmAssistant.includeDirectoryNames', (ngModelChange)='config.save()')
+    label.form-check-label(for='ai-directory-names') Include current directory and up to 80 file/folder names after Ask
+
+p.text-muted.mt-3.mb-0
+    | Requests are sent only when you press the AI button in a terminal. File contents, passwords, tokens and terminal output are never included automatically.
