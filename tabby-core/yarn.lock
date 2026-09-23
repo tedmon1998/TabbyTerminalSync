@@ -90,9 +90,9 @@ events@^3.3.0:
   integrity sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q==
 
 fuzzy-search@^3.2.1:
-  version "3.2.1"
-  resolved "https://registry.yarnpkg.com/fuzzy-search/-/fuzzy-search-3.2.1.tgz#65d5faad6bc633aee86f1898b7788dfe312ac6c9"
-  integrity sha512-vAcPiyomt1ioKAsAL2uxSABHJ4Ju/e4UeDM+g1OlR0vV4YhLGMNsdLNvZTpEDY4JCSt0E4hASCNM5t2ETtsbyg==
+  version "3.3.0"
+  resolved "https://registry.yarnpkg.com/fuzzy-search/-/fuzzy-search-3.3.0.tgz#659303e5c483e56623a2612efa8a1e94962758f7"
+  integrity sha512-08Kc92wGgey2LeTcN0dG8zB+tzSgwujLEYRr3UstbkcxIZC7x9X7BjnIXCz2tAzcCqe6PRubmKr06WxAgA/U8Q==
 
 https-proxy-agent@5.0.0:
   version "5.0.0"
