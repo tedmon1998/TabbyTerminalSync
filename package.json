@@ -52,7 +52,7 @@
     "json-loader": "^0.5.7",
     "lru-cache": "^6.0.0",
     "macos-release": "^3.3.0",
-    "ngx-toastr": "^16.0.2",
+    "ngx-toastr": "^16.2.0",
     "ngx-filesize": "^3.0.2",
     "node-abi": "^4",
     "npmlog": "6.0.2",
